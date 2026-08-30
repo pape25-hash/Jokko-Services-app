@@ -1,15 +1,16 @@
 {
-  "name": "mon-app",
+  "name": "jokko-services",
   "version": "1.0.0",
-  "description": "App Node.js/Express avec SQLite",
+  "description": "Jokko Services - mise en relation employeurs/employes a domicile",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.19.2",
-    "better-sqlite3": "^11.3.0"
+    "better-sqlite3": "^11.3.0",
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6"
   }
 }
