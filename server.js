@@ -49,6 +49,19 @@ function setSessionCookie(res, token) {
   });
 }
 
+// ---------- Admin ----------
+// Mot de passe admin : défini via la variable d'environnement ADMIN_PASSWORD sur Railway.
+// Si non définie, une valeur par défaut est utilisée (à changer en production !).
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'jokko-admin-2026';
+const ADMIN_TOKEN = crypto.createHash('sha256').update(ADMIN_PASSWORD).digest('hex');
+
+function requireAdmin(req, res, next) {
+  if (req.cookies.admin_sid !== ADMIN_TOKEN) {
+    return res.status(401).json({ success: 0, message: 'Non autorisé' });
+  }
+  next();
+}
+
 // ---------- Auth ----------
 
 app.post('/api/auth/register', (req, res) => {
@@ -353,6 +366,98 @@ app.post('/api/messages/:peer', requireAuth, (req, res) => {
   db.prepare('INSERT INTO messages (from_phone, to_phone, text) VALUES (?, ?, ?)')
     .run(req.user.phone, req.params.peer, text.trim());
   res.status(201).json({ success: 1 });
+});
+
+// --- Connexion admin ---
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body;
+  if (password !== ADMIN_PASSWORD) {
+    return res.status(401).json({ success: 0, message: 'Mot de passe incorrect.' });
+  }
+  res.cookie('admin_sid', ADMIN_TOKEN, {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 1000 * 60 * 60 * 12 // 12 heures
+  });
+  res.json({ success: 1 });
+});
+
+app.post('/api/admin/logout', (req, res) => {
+  res.clearCookie('admin_sid');
+  res.json({ success: 1 });
+});
+
+app.get('/api/admin/me', requireAdmin, (req, res) => {
+  res.json({ success: 1 });
+});
+
+// --- Vue d'ensemble : tous les utilisateurs avec leurs infos liées ---
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  const users = db.prepare('SELECT id, name, phone, role, created_at FROM users ORDER BY created_at DESC').all();
+
+  const enriched = users.map(u => {
+    const sub = db.prepare('SELECT active FROM subscriptions WHERE phone = ?').get(u.phone);
+    const hasProfile = u.role === 'travailleur'
+      ? !!db.prepare('SELECT phone FROM profiles WHERE phone = ?').get(u.phone)
+      : !!db.prepare('SELECT phone FROM jobposts WHERE phone = ?').get(u.phone);
+    return {
+      ...u,
+      visible: !!(sub && sub.active),
+      profilComplet: hasProfile
+    };
+  });
+
+  res.json({ success: 1, users: enriched });
+});
+
+// --- Statistiques générales ---
+app.get('/api/admin/stats', requireAdmin, (req, res) => {
+  const totalUsers = db.prepare('SELECT COUNT(*) as n FROM users').get().n;
+  const totalTravailleurs = db.prepare(`SELECT COUNT(*) as n FROM users WHERE role='travailleur'`).get().n;
+  const totalEmployeurs = db.prepare(`SELECT COUNT(*) as n FROM users WHERE role='employeur'`).get().n;
+  const totalVisibles = db.prepare('SELECT COUNT(*) as n FROM subscriptions WHERE active = 1').get().n;
+  const totalContacts = db.prepare('SELECT COUNT(*) as n FROM contacts').get().n;
+  const totalMessages = db.prepare('SELECT COUNT(*) as n FROM messages').get().n;
+  res.json({
+    success: 1,
+    stats: { totalUsers, totalTravailleurs, totalEmployeurs, totalVisibles, totalContacts, totalMessages }
+  });
+});
+
+// --- Détail d'un utilisateur (profil ou annonce complète) ---
+app.get('/api/admin/users/:phone', requireAdmin, (req, res) => {
+  const user = db.prepare('SELECT id, name, phone, role, created_at FROM users WHERE phone = ?').get(req.params.phone);
+  if (!user) return res.status(404).json({ success: 0 });
+
+  const sub = db.prepare('SELECT active FROM subscriptions WHERE phone = ?').get(user.phone);
+  let profile = null, jobpost = null;
+
+  if (user.role === 'travailleur') {
+    const row = db.prepare('SELECT * FROM profiles WHERE phone = ?').get(user.phone);
+    if (row) profile = { ...row, services: JSON.parse(row.services || '[]'), traits: JSON.parse(row.traits || '[]'), skills: JSON.parse(row.skills || '[]'), photos: JSON.parse(row.photos || '[]') };
+  } else {
+    const row = db.prepare('SELECT * FROM jobposts WHERE phone = ?').get(user.phone);
+    if (row) jobpost = { ...row, photos: JSON.parse(row.photos || '[]') };
+  }
+
+  res.json({ success: 1, user: { ...user, visible: !!(sub && sub.active) }, profile, jobpost });
+});
+
+// --- Supprimer un utilisateur et toutes ses données liées ---
+app.delete('/api/admin/users/:phone', requireAdmin, (req, res) => {
+  const phone = req.params.phone;
+  const user = db.prepare('SELECT phone FROM users WHERE phone = ?').get(phone);
+  if (!user) return res.status(404).json({ success: 0 });
+
+  db.prepare('DELETE FROM users WHERE phone = ?').run(phone);
+  db.prepare('DELETE FROM profiles WHERE phone = ?').run(phone);
+  db.prepare('DELETE FROM jobposts WHERE phone = ?').run(phone);
+  db.prepare('DELETE FROM subscriptions WHERE phone = ?').run(phone);
+  db.prepare('DELETE FROM contacts WHERE from_phone = ? OR to_phone = ?').run(phone, phone);
+  db.prepare('DELETE FROM messages WHERE from_phone = ? OR to_phone = ?').run(phone, phone);
+  db.prepare('DELETE FROM sessions WHERE phone = ?').run(phone);
+
+  res.json({ success: 1 });
 });
 
 app.listen(PORT, () => {
