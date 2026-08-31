@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Jokko Services</title>
+<style>
+  :root {
+    --primary: #059669;
+    --primary-dark: #047857;
+    --bg: #F8FAFC;
+    --card: #ffffff;
+    --border: #E2E8F0;
+    --text: #0F172A;
+    --text-light: #64748B;
+    --danger: #DC2626;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+  }
+  header {
+    background: #0F172A;
+    color: white;
+    padding: 18px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  header h1 { margin: 0; font-size: 1.2rem; }
+  header button {
+    background: transparent;
+    border: 1px solid #475569;
+    color: white;
+    padding: 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+  .container { max-width: 1000px; margin: 0 auto; padding: 24px 16px 60px; }
+
+  /* Login */
+  #login-screen {
+    max-width: 380px;
+    margin: 80px auto;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 32px;
+    text-align: center;
+  }
+  #login-screen h2 { margin-top: 0; }
+  #login-screen input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    margin: 16px 0;
+  }
+  #login-screen button {
+    width: 100%;
+    padding: 12px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 1rem;
+  }
+  #login-error { color: var(--danger); font-size: 0.85rem; min-height: 20px; }
+
+  /* Stats */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+  }
+  .stat-card .num { font-size: 1.6rem; font-weight: 700; color: var(--primary-dark); }
+  .stat-card .label { font-size: 0.8rem; color: var(--text-light); margin-top: 4px; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+  th { background: #F1F5F9; font-weight: 600; color: var(--text-light); font-size: 0.78rem; text-transform: uppercase; }
+  tr:last-child td { border-bottom: none; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .badge.role-travailleur { background: #dbeafe; color: #1e40af; }
+  .badge.role-employeur { background: #fef3c7; color: #92400e; }
+  .badge.yes { background: #dcfce7; color: #166534; }
+  .badge.no { background: #fee2e2; color: #991b1b; }
+  .btn-delete {
+    background: none;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.78rem;
+  }
+  .btn-delete:hover { background: var(--danger); color: white; }
+  #hidden-app { display: none; }
+  .empty { text-align: center; padding: 40px; color: var(--text-light); }
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <h2>🔒 Administration</h2>
+  <p style="color:var(--text-light); font-size:0.9rem;">Jokko Services</p>
+  <input type="password" id="admin-password" placeholder="Mot de passe admin" autofocus>
+  <div id="login-error"></div>
+  <button onclick="login()">Se connecter</button>
+</div>
+
+<div id="hidden-app">
+  <header>
+    <h1>🔧 Administration Jokko Services</h1>
+    <button onclick="logout()">Se déconnecter</button>
+  </header>
+
+  <div class="container">
+    <div class="stats-grid" id="stats-grid"></div>
+
+    <h3>Utilisateurs inscrits</h3>
+    <div id="users-container"><div class="empty">Chargement...</div></div>
+  </div>
+</div>
+
+<script>
+  async function api(method, url, body) {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || 'Erreur');
+    return data;
+  }
+
+  async function login() {
+    const password = document.getElementById('admin-password').value;
+    const errEl = document.getElementById('login-error');
+    errEl.textContent = '';
+    try {
+      await api('POST', '/api/admin/login', { password });
+      showApp();
+    } catch (err) {
+      errEl.textContent = 'Mot de passe incorrect.';
+    }
+  }
+
+  document.getElementById('admin-password').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') login();
+  });
+
+  async function logout() {
+    await api('POST', '/api/admin/logout');
+    location.reload();
+  }
+
+  function showApp() {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('hidden-app').style.display = 'block';
+    loadStats();
+    loadUsers();
+  }
+
+  async function loadStats() {
+    try {
+      const { stats } = await api('GET', '/api/admin/stats');
+      const grid = document.getElementById('stats-grid');
+      const items = [
+        ['Utilisateurs', stats.totalUsers],
+        ['Nounous', stats.totalTravailleurs],
+        ['Employeurs', stats.totalEmployeurs],
+        ['Profils visibles', stats.totalVisibles],
+        ['Mises en relation', stats.totalContacts],
+        ['Messages', stats.totalMessages]
+      ];
+      grid.innerHTML = items.map(([label, num]) => `
+        <div class="stat-card"><div class="num">${num}</div><div class="label">${label}</div></div>
+      `).join('');
+    } catch (err) {}
+  }
+
+  async function loadUsers() {
+    const container = document.getElementById('users-container');
+    try {
+      const { users } = await api('GET', '/api/admin/users');
+      if (users.length === 0) {
+        container.innerHTML = '<div class="empty">Aucun utilisateur inscrit.</div>';
+        return;
+      }
+      container.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Nom</th><th>Téléphone</th><th>Rôle</th><th>Profil</th><th>Visible</th><th>Inscrit le</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${users.map(u => `
+              <tr>
+                <td>${escapeHtml(u.name)}</td>
+                <td>${escapeHtml(u.phone)}</td>
+                <td><span class="badge role-${u.role}">${u.role}</span></td>
+                <td><span class="badge ${u.profilComplet ? 'yes' : 'no'}">${u.profilComplet ? 'Complet' : 'Vide'}</span></td>
+                <td><span class="badge ${u.visible ? 'yes' : 'no'}">${u.visible ? 'Oui' : 'Non'}</span></td>
+                <td>${u.created_at}</td>
+                <td><button class="btn-delete" onclick="deleteUser('${u.phone}', '${escapeHtml(u.name)}')">Supprimer</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    } catch (err) {
+      container.innerHTML = '<div class="empty">Erreur de chargement.</div>';
+    }
+  }
+
+  async function deleteUser(phone, name) {
+    if (!confirm(`Supprimer définitivement le compte de ${name} ? Cette action est irréversible.`)) return;
+    try {
+      await api('DELETE', '/api/admin/users/' + encodeURIComponent(phone));
+      loadStats();
+      loadUsers();
+    } catch (err) {
+      alert('Erreur lors de la suppression.');
+    }
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // Vérifie si déjà connecté (cookie admin valide)
+  api('GET', '/api/admin/me').then(showApp).catch(() => {});
+</script>
+
+</body>
+</html>
