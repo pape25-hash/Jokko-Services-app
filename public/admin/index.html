@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin — Jokko Services</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined">
 <style>
   :root {
     --primary: #059669;
@@ -126,10 +127,32 @@
 <div id="login-screen">
   <h2>🔒 Administration</h2>
   <p style="color:var(--text-light); font-size:0.9rem;">Jokko Services</p>
-  <input type="password" id="admin-password" placeholder="Mot de passe admin" autofocus>
+  <div style="position:relative; width:100%; margin:16px 0;">
+    <input type="password" id="admin-password" placeholder="Mot de passe admin" autofocus style="width:100%; box-sizing:border-box; padding:12px 44px 12px 12px; border:1px solid var(--border); border-radius:8px; font-size:1rem; margin:0;">
+    <button type="button" id="toggle-pwd-btn" onclick="togglePwd()" aria-label="Afficher le mot de passe" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; padding:6px; display:flex; align-items:center; color:#666;">
+      <span class="material-symbols-outlined" id="toggle-pwd-icon" style="font-size:22px;">visibility</span>
+    </button>
+  </div>
   <div id="login-error"></div>
   <button onclick="login()">Se connecter</button>
 </div>
+
+<script>
+  function togglePwd() {
+    const input = document.getElementById('admin-password');
+    const icon = document.getElementById('toggle-pwd-icon');
+    const btn = document.getElementById('toggle-pwd-btn');
+    if (input.type === 'password') {
+      input.type = 'text';
+      icon.textContent = 'visibility_off';
+      btn.setAttribute('aria-label', 'Masquer le mot de passe');
+    } else {
+      input.type = 'password';
+      icon.textContent = 'visibility';
+      btn.setAttribute('aria-label', 'Afficher le mot de passe');
+    }
+  }
+</script>
 
 <div id="hidden-app">
   <header>
