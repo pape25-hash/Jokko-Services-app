@@ -54,15 +54,51 @@
     text-align: center;
   }
   #login-screen h2 { margin-top: 0; }
-  #login-screen input {
+  .pwd-field-wrap {
+    display: flex;
+    align-items: stretch;
     width: 100%;
-    padding: 12px;
+    margin: 16px 0;
     border: 1px solid var(--border);
     border-radius: 8px;
-    font-size: 1rem;
-    margin: 16px 0;
+    overflow: hidden;
+    background: white;
   }
-  #login-screen button {
+  .pwd-field-wrap input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    padding: 12px;
+    font-size: 1rem;
+    background: transparent;
+  }
+  .pwd-toggle-btn {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-light);
+  }
+  .pwd-toggle-btn:hover { color: var(--primary); }
+  .material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 22px;
+    display: inline-block;
+    line-height: 1;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-feature-settings: 'liga';
+    font-feature-settings: 'liga';
+  }
+  #login-screen button.submit-btn {
     width: 100%;
     padding: 12px;
     background: var(--primary);
@@ -127,14 +163,14 @@
 <div id="login-screen">
   <h2>🔒 Administration</h2>
   <p style="color:var(--text-light); font-size:0.9rem;">Jokko Services</p>
-  <div style="position:relative; width:100%; margin:16px 0;">
-    <input type="password" id="admin-password" placeholder="Mot de passe admin" autofocus style="width:100%; box-sizing:border-box; padding:12px 44px 12px 12px; border:1px solid var(--border); border-radius:8px; font-size:1rem; margin:0;">
-    <button type="button" id="toggle-pwd-btn" onclick="togglePwd()" aria-label="Afficher le mot de passe" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; padding:6px; display:flex; align-items:center; color:#666;">
-      <span class="material-symbols-outlined" id="toggle-pwd-icon" style="font-size:22px;">visibility</span>
+  <div class="pwd-field-wrap">
+    <input type="password" id="admin-password" placeholder="Mot de passe admin" autofocus>
+    <button type="button" class="pwd-toggle-btn" id="toggle-pwd-btn" onclick="togglePwd()" aria-label="Afficher le mot de passe">
+      <span class="material-symbols-outlined" id="toggle-pwd-icon">visibility</span>
     </button>
   </div>
   <div id="login-error"></div>
-  <button onclick="login()">Se connecter</button>
+  <button class="submit-btn" onclick="login()">Se connecter</button>
 </div>
 
 <script>
@@ -143,6 +179,16 @@
     const icon = document.getElementById('toggle-pwd-icon');
     const btn = document.getElementById('toggle-pwd-btn');
     if (input.type === 'password') {
+      input.type = 'text';
+      icon.textContent = 'visibility_off';
+      btn.setAttribute('aria-label', 'Masquer le mot de passe');
+    } else {
+      input.type = 'password';
+      icon.textContent = 'visibility';
+      btn.setAttribute('aria-label', 'Afficher le mot de passe');
+    }
+  }
+</script>
       input.type = 'text';
       icon.textContent = 'visibility_off';
       btn.setAttribute('aria-label', 'Masquer le mot de passe');
