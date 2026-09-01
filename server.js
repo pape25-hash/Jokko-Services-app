@@ -14,8 +14,17 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '10mb' })); // limit généreux pour les photos en base64
+app.use(express.urlencoded({ extended: true })); // nécessaire pour recevoir les IPN PayTech
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ---------- PayTech (paiement réel) ----------
+// Clés stockées dans les variables d'environnement Railway : PAYTECH_API_KEY, PAYTECH_API_SECRET.
+// Si absentes, on retombe automatiquement en mode test (voir /api/create-paytech-payment).
+const PAYTECH_API_KEY = process.env.PAYTECH_API_KEY || '';
+const PAYTECH_API_SECRET = process.env.PAYTECH_API_SECRET || '';
+const PAYTECH_ENV = process.env.PAYTECH_ENV || 'test'; // 'test' ou 'prod'
+const APP_BASE_URL = process.env.APP_BASE_URL || 'https://jokko-services-app-production.up.railway.app';
 
 // ---------- Helpers ----------
 
@@ -233,10 +242,94 @@ app.post('/api/subscription/deactivate', requireAuth, (req, res) => {
   res.json({ success: 1 });
 });
 
-// Paiement PayTech réel non configuré pour l'instant : on renvoie une erreur
-// contrôlée que le frontend intercepte pour basculer en mode test (voir index.html).
-app.post('/api/create-paytech-payment', requireAuth, (req, res) => {
-  res.status(501).json({ success: 0, message: 'Paiement PayTech non configuré pour le moment.' });
+// Création d'un paiement réel via PayTech. Si les clés ne sont pas configurées,
+// on renvoie une erreur contrôlée que le frontend intercepte pour basculer en mode test.
+app.post('/api/create-paytech-payment', requireAuth, async (req, res) => {
+  if (!PAYTECH_API_KEY || !PAYTECH_API_SECRET) {
+    return res.status(501).json({ success: 0, message: 'Paiement PayTech non configuré pour le moment.' });
+  }
+
+  const price = Number(req.body.price) || 1000;
+  const refCommand = `JOKKO_${req.user.phone}_${Date.now()}`;
+
+  try {
+    const response = await fetch('https://paytech.sn/api/payment/request-payment', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'API_KEY': PAYTECH_API_KEY,
+        'API_SECRET': PAYTECH_API_SECRET
+      },
+      body: JSON.stringify({
+        item_name: 'Visibilité Jokko Services (30 jours)',
+        item_price: price,
+        currency: 'XOF',
+        ref_command: refCommand,
+        command_name: `Abonnement visibilité - ${req.user.name}`,
+        env: PAYTECH_ENV,
+        ipn_url: `${APP_BASE_URL}/api/paytech-ipn`,
+        success_url: `${APP_BASE_URL}/?payment=success`,
+        cancel_url: `${APP_BASE_URL}/?payment=cancel`,
+        custom_field: JSON.stringify({ phone: req.user.phone })
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.success === 1) {
+      // On enregistre la commande en attente pour pouvoir la retrouver quand l'IPN arrive.
+      db.prepare(`
+        INSERT INTO subscriptions (phone, active, price, updated_at)
+        VALUES (?, COALESCE((SELECT active FROM subscriptions WHERE phone = ?), 0), ?, datetime('now'))
+        ON CONFLICT(phone) DO UPDATE SET price = excluded.price
+      `).run(req.user.phone, req.user.phone, price);
+
+      return res.json({ success: 1, redirect_url: data.redirect_url });
+    }
+
+    return res.status(400).json({ success: 0, message: data.message || 'Erreur PayTech.' });
+  } catch (err) {
+    return res.status(500).json({ success: 0, message: 'Erreur de connexion à PayTech.' });
+  }
+});
+
+// Notification PayTech (IPN) : appelée automatiquement par PayTech quand un paiement
+// réussit ou est annulé. Sécurisée par vérification HMAC (voir doc PayTech).
+app.post('/api/paytech-ipn', (req, res) => {
+  const {
+    type_event,
+    custom_field,
+    ref_command,
+    item_price,
+    final_item_price,
+    hmac_compute
+  } = req.body;
+
+  const amount = final_item_price || item_price;
+  const message = `${amount}|${ref_command}|${PAYTECH_API_KEY}`;
+  const expectedHmac = crypto.createHmac('sha256', PAYTECH_API_SECRET).update(message).digest('hex');
+
+  if (!hmac_compute || expectedHmac !== hmac_compute) {
+    return res.status(403).send('Forbidden');
+  }
+
+  let phone = null;
+  try {
+    const decoded = JSON.parse(custom_field);
+    phone = decoded.phone;
+  } catch (e) {
+    return res.status(400).send('custom_field invalide');
+  }
+
+  if (!phone) return res.status(400).send('phone manquant');
+
+  if (type_event === 'sale_complete') {
+    db.prepare(`UPDATE subscriptions SET active = 1, updated_at = datetime('now') WHERE phone = ?`).run(phone);
+  } else if (type_event === 'sale_canceled') {
+    // On ne désactive pas automatiquement une visibilité déjà active suite à une simple annulation.
+  }
+
+  res.status(200).send('OK');
 });
 
 // ---------- Browse (recherche) ----------
